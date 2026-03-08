@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Users, Clock, Check, X, Plus, Minus } from 'lucide-react';
+import { Users, Clock, Check, X, Plus, Minus, Lock, Unlock } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -63,6 +63,9 @@ export function FloorPlan() {
   const [selected, setSelected] = useState<RestaurantTable | null>(null);
   const [actionDialog, setActionDialog] = useState(false);
   const [seatForm, setSeatForm] = useState({ guestName: '', guestCount: '2' });
+  const [editMode, setEditMode] = useState(false);
+  const [dragging, setDragging] = useState<string | null>(null);
+  const floorRef = useRef<HTMLDivElement>(null);
 
   const counts = {
     available: tables.filter(t => t.status === 'available').length,
@@ -72,6 +75,7 @@ export function FloorPlan() {
   };
 
   const handleTableClick = (table: RestaurantTable) => {
+    if (editMode) return; // don't open dialog while dragging
     setSelected(table);
     setSeatForm({ guestName: table.guestName || '', guestCount: (table.guestCount || table.seats).toString() });
     setActionDialog(true);
@@ -80,6 +84,32 @@ export function FloorPlan() {
   const updateTable = (id: string, updates: Partial<RestaurantTable>) => {
     setTables(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
   };
+
+  const getPercentPosition = useCallback((clientX: number, clientY: number) => {
+    if (!floorRef.current) return { x: 0, y: 0 };
+    const rect = floorRef.current.getBoundingClientRect();
+    const x = Math.max(0, Math.min(90, ((clientX - rect.left) / rect.width) * 100));
+    const y = Math.max(0, Math.min(85, ((clientY - rect.top) / rect.height) * 100));
+    return { x, y };
+  }, []);
+
+  const handlePointerDown = useCallback((e: React.PointerEvent, tableId: string) => {
+    if (!editMode) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setDragging(tableId);
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  }, [editMode]);
+
+  const handlePointerMove = useCallback((e: React.PointerEvent) => {
+    if (!dragging) return;
+    const { x, y } = getPercentPosition(e.clientX, e.clientY);
+    setTables(prev => prev.map(t => t.id === dragging ? { ...t, x, y } : t));
+  }, [dragging, getPercentPosition]);
+
+  const handlePointerUp = useCallback(() => {
+    setDragging(null);
+  }, []);
 
   const seatGuests = () => {
     if (!selected) return;
@@ -118,36 +148,65 @@ export function FloorPlan() {
 
   return (
     <div className="space-y-4">
-      {/* Legend */}
-      <div className="flex flex-wrap gap-4">
-        {(Object.entries(statusConfig) as [TableStatus, typeof statusConfig.available][]).map(([key, cfg]) => (
-          <div key={key} className="flex items-center gap-2 text-sm">
-            <span className={`h-3 w-3 rounded-full ${cfg.dot}`} />
-            <span className="text-muted-foreground">{cfg.label}</span>
-            <span className="font-semibold">{counts[key]}</span>
-          </div>
-        ))}
+      {/* Legend + Edit toggle */}
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex flex-wrap gap-4">
+          {(Object.entries(statusConfig) as [TableStatus, typeof statusConfig.available][]).map(([key, cfg]) => (
+            <div key={key} className="flex items-center gap-2 text-sm">
+              <span className={`h-3 w-3 rounded-full ${cfg.dot}`} />
+              <span className="text-muted-foreground">{cfg.label}</span>
+              <span className="font-semibold">{counts[key]}</span>
+            </div>
+          ))}
+        </div>
+        <Button
+          variant={editMode ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => setEditMode(!editMode)}
+          className="gap-1.5"
+        >
+          {editMode ? <Unlock className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5" />}
+          {editMode ? 'Lock Layout' : 'Edit Layout'}
+        </Button>
       </div>
 
       {/* Floor Plan */}
       <Card className="border-0 shadow-sm overflow-hidden">
         <CardContent className="p-4 sm:p-6">
-          <div className="relative w-full min-h-[500px] bg-muted/30 rounded-2xl border-2 border-dashed border-border p-4">
+          <div
+            ref={floorRef}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            className={`relative w-full min-h-[500px] bg-muted/30 rounded-2xl border-2 border-dashed border-border p-4 ${editMode ? 'ring-2 ring-primary/30' : ''}`}
+            style={{ touchAction: editMode ? 'none' : 'auto' }}
+          >
             {/* Room labels */}
             <div className="absolute top-3 left-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">Entrance ↓</div>
             <div className="absolute bottom-3 right-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">Kitchen →</div>
             <div className="absolute top-3 right-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">Window</div>
             <div className="absolute bottom-3 left-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">Bar Area</div>
 
+            {editMode && (
+              <div className="absolute inset-0 pointer-events-none z-0">
+                {Array.from({ length: 9 }).map((_, i) => (
+                  <div key={`h-${i}`} className="absolute w-full border-t border-border/20" style={{ top: `${(i + 1) * 10}%` }} />
+                ))}
+                {Array.from({ length: 9 }).map((_, i) => (
+                  <div key={`v-${i}`} className="absolute h-full border-l border-border/20" style={{ left: `${(i + 1) * 10}%` }} />
+                ))}
+              </div>
+            )}
+
             {tables.map((table) => {
               const cfg = statusConfig[table.status];
               return (
                 <motion.button
                   key={table.id}
-                  whileHover={{ scale: 1.08 }}
-                  whileTap={{ scale: 0.95 }}
+                  whileHover={editMode ? {} : { scale: 1.08 }}
+                  whileTap={editMode ? {} : { scale: 0.95 }}
                   onClick={() => handleTableClick(table)}
-                  className={`absolute flex flex-col items-center justify-center border-2 transition-colors cursor-pointer ${shapeClass[table.shape]} ${cfg.bg} ${cfg.border} hover:shadow-lg`}
+                  onPointerDown={(e) => handlePointerDown(e, table.id)}
+                  className={`absolute flex flex-col items-center justify-center border-2 transition-colors ${shapeClass[table.shape]} ${cfg.bg} ${cfg.border} hover:shadow-lg ${editMode ? 'cursor-grab active:cursor-grabbing z-10' : 'cursor-pointer'} ${dragging === table.id ? 'shadow-xl ring-2 ring-primary opacity-90' : ''}`}
                   style={{ left: `${table.x}%`, top: `${table.y}%` }}
                 >
                   <span className="font-bold text-sm">T{table.number}</span>
