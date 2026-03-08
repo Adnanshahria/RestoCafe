@@ -329,8 +329,8 @@ export function FloorPlan() {
                         <div className="space-y-1 max-h-32 overflow-y-auto">
                           {tableOrder.items.map(item => (
                             <div key={item.id} className="flex justify-between text-sm">
-                              <span className="truncate">{item.quantity}× {item.menuItemName}</span>
-                              <span className="font-medium text-muted-foreground">${(item.unitPrice * item.quantity).toFixed(2)}</span>
+                              <span className="truncate">{item.quantity}× {item.menu_item_name}</span>
+                              <span className="font-medium text-muted-foreground">${(Number(item.unit_price) * item.quantity).toFixed(2)}</span>
                             </div>
                           ))}
                         </div>
