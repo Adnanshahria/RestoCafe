@@ -5,10 +5,17 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
+import { OrderProvider } from "@/contexts/OrderContext";
 import { AppLayout } from "@/components/layout/AppLayout";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
-import { OrdersPage, MenuPage, InvoicesPage, FinancePage, CustomersPage, AnalyticsPage, SettingsPage } from "./pages/PlaceholderPages";
+import OrdersPage from "./pages/Orders";
+import MenuPage from "./pages/Menu";
+import InvoicesPage from "./pages/Invoices";
+import FinancePage from "./pages/Finance";
+import CustomersPage from "./pages/Customers";
+import AnalyticsPage from "./pages/Analytics";
+import SettingsPage from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -42,13 +49,15 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <ThemeProvider>
       <AuthProvider>
-        <TooltipProvider>
-          <Toaster />
-          <Sonner />
-          <BrowserRouter>
-            <AppRoutes />
-          </BrowserRouter>
-        </TooltipProvider>
+        <OrderProvider>
+          <TooltipProvider>
+            <Toaster />
+            <Sonner />
+            <BrowserRouter>
+              <AppRoutes />
+            </BrowserRouter>
+          </TooltipProvider>
+        </OrderProvider>
       </AuthProvider>
     </ThemeProvider>
   </QueryClientProvider>
