@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useOrders } from '@/contexts/OrderContext';
+import { useOrders as useDbOrders } from '@/hooks/useSupabaseData';
 
 export type TableStatus = 'available' | 'occupied' | 'reserved' | 'cleaning';
 
