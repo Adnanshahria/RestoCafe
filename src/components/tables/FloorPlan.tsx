@@ -68,6 +68,8 @@ export function FloorPlan() {
   const [seatForm, setSeatForm] = useState({ guestName: '', guestCount: '2' });
   const [editMode, setEditMode] = useState(false);
   const [dragging, setDragging] = useState<string | null>(null);
+  const [addDialog, setAddDialog] = useState(false);
+  const [newTable, setNewTable] = useState<{ seats: string; shape: RestaurantTable['shape'] }>({ seats: '4', shape: 'square' });
   const floorRef = useRef<HTMLDivElement>(null);
 
   const counts = {
@@ -86,6 +88,26 @@ export function FloorPlan() {
 
   const updateTable = (id: string, updates: Partial<RestaurantTable>) => {
     setTables(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
+  };
+
+  const removeTable = (id: string) => {
+    setTables(prev => prev.filter(t => t.id !== id));
+  };
+
+  const addNewTable = () => {
+    const maxNumber = tables.reduce((max, t) => Math.max(max, t.number), 0);
+    const newT: RestaurantTable = {
+      id: `t-${Date.now()}`,
+      number: maxNumber + 1,
+      seats: parseInt(newTable.seats) || 4,
+      x: 40,
+      y: 40,
+      status: 'available',
+      shape: newTable.shape,
+    };
+    setTables(prev => [...prev, newT]);
+    setAddDialog(false);
+    setNewTable({ seats: '4', shape: 'square' });
   };
 
   const getPercentPosition = useCallback((clientX: number, clientY: number) => {
@@ -162,15 +184,22 @@ export function FloorPlan() {
             </div>
           ))}
         </div>
-        <Button
-          variant={editMode ? 'default' : 'outline'}
-          size="sm"
-          onClick={() => setEditMode(!editMode)}
-          className="gap-1.5"
-        >
-          {editMode ? <Unlock className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5" />}
-          {editMode ? 'Lock Layout' : 'Edit Layout'}
-        </Button>
+        <div className="flex gap-2">
+          {editMode && (
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setAddDialog(true)}>
+              <Plus className="h-3.5 w-3.5" /> Add Table
+            </Button>
+          )}
+          <Button
+            variant={editMode ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setEditMode(!editMode)}
+            className="gap-1.5"
+          >
+            {editMode ? <Unlock className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5" />}
+            {editMode ? 'Lock Layout' : 'Edit Layout'}
+          </Button>
+        </div>
       </div>
 
       {/* Floor Plan */}
@@ -203,26 +232,38 @@ export function FloorPlan() {
             {tables.map((table) => {
               const cfg = statusConfig[table.status];
               return (
-                <motion.button
+                <motion.div
                   key={table.id}
-                  whileHover={editMode ? {} : { scale: 1.08 }}
-                  whileTap={editMode ? {} : { scale: 0.95 }}
-                  onClick={() => handleTableClick(table)}
-                  onPointerDown={(e) => handlePointerDown(e, table.id)}
-                  className={`absolute flex flex-col items-center justify-center border-2 transition-colors ${shapeClass[table.shape]} ${cfg.bg} ${cfg.border} hover:shadow-lg ${editMode ? 'cursor-grab active:cursor-grabbing z-10' : 'cursor-pointer'} ${dragging === table.id ? 'shadow-xl ring-2 ring-primary opacity-90' : ''}`}
+                  className="absolute"
                   style={{ left: `${table.x}%`, top: `${table.y}%` }}
                 >
-                  <span className="font-bold text-sm">T{table.number}</span>
-                  <span className="text-[10px] text-muted-foreground">{table.seats} seats</span>
-                  {table.status === 'occupied' && table.occupiedSince && (
-                    <span className="text-[10px] font-medium text-warning flex items-center gap-0.5 mt-0.5">
-                      <Clock className="h-2.5 w-2.5" />{timeSince(table.occupiedSince)}
-                    </span>
+                  {editMode && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); removeTable(table.id); }}
+                      className="absolute -top-2 -right-2 z-20 h-5 w-5 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center shadow-md hover:scale-110 transition-transform"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
                   )}
-                  {table.guestName && table.status !== 'available' && (
-                    <span className="text-[9px] text-muted-foreground truncate max-w-full px-1">{table.guestName}</span>
-                  )}
-                </motion.button>
+                  <motion.button
+                    whileHover={editMode ? {} : { scale: 1.08 }}
+                    whileTap={editMode ? {} : { scale: 0.95 }}
+                    onClick={() => handleTableClick(table)}
+                    onPointerDown={(e) => handlePointerDown(e, table.id)}
+                    className={`flex flex-col items-center justify-center border-2 transition-colors ${shapeClass[table.shape]} ${cfg.bg} ${cfg.border} hover:shadow-lg ${editMode ? 'cursor-grab active:cursor-grabbing z-10' : 'cursor-pointer'} ${dragging === table.id ? 'shadow-xl ring-2 ring-primary opacity-90' : ''}`}
+                  >
+                    <span className="font-bold text-sm">T{table.number}</span>
+                    <span className="text-[10px] text-muted-foreground">{table.seats} seats</span>
+                    {table.status === 'occupied' && table.occupiedSince && (
+                      <span className="text-[10px] font-medium text-warning flex items-center gap-0.5 mt-0.5">
+                        <Clock className="h-2.5 w-2.5" />{timeSince(table.occupiedSince)}
+                      </span>
+                    )}
+                    {table.guestName && table.status !== 'available' && (
+                      <span className="text-[9px] text-muted-foreground truncate max-w-full px-1">{table.guestName}</span>
+                    )}
+                  </motion.button>
+                </motion.div>
               );
             })}
           </div>
@@ -328,6 +369,35 @@ export function FloorPlan() {
               )}
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Table Dialog */}
+      <Dialog open={addDialog} onOpenChange={setAddDialog}>
+        <DialogContent className="max-w-xs">
+          <DialogHeader>
+            <DialogTitle>Add New Table</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>Seats</Label>
+              <Input type="number" min="1" max="12" value={newTable.seats} onChange={e => setNewTable(f => ({ ...f, seats: e.target.value }))} />
+            </div>
+            <div>
+              <Label>Shape</Label>
+              <Select value={newTable.shape} onValueChange={(v: RestaurantTable['shape']) => setNewTable(f => ({ ...f, shape: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="round">Round</SelectItem>
+                  <SelectItem value="square">Square</SelectItem>
+                  <SelectItem value="rect">Rectangle</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <Button className="w-full" onClick={addNewTable}>
+              <Plus className="h-4 w-4 mr-1" /> Add Table
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
