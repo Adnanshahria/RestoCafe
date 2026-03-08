@@ -11,7 +11,7 @@ export function useTable<T>(table: string, orderBy?: string) {
   const refetch = useCallback(async () => {
     if (!isAuthenticated) return;
     setLoading(true);
-    let query = supabase.from(table).select('*');
+    let query = supabase.from(table).select('*') as any;
     if (orderBy) query = query.order(orderBy, { ascending: false });
     const { data: rows, error } = await query;
     if (!error && rows) setData(rows as T[]);
