@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { useMenuItems, useCategories, useOrders as useDbOrders } from '@/hooks/useSupabaseData';
+import { useMenuItems, useCategories, useOrders as useDbOrders, useInvoices } from '@/hooks/useSupabaseData';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 
@@ -23,7 +23,7 @@ interface CartItem {
 const TAX_RATE = 0.1;
 
 // Order list sub-component
-function OrderListView({ orders, updateOrderStatus }: { orders: any[]; updateOrderStatus: (id: string, status: string) => Promise<void> }) {
+function OrderListView({ orders, updateOrderStatus, onComplete }: { orders: any[]; updateOrderStatus: (id: string, status: string) => Promise<void>; onComplete: (order: any) => Promise<void> }) {
   const statusFlow = ['pending', 'preparing', 'served', 'completed'];
   const nextStatus = (s: string) => {
     const i = statusFlow.indexOf(s);
@@ -67,7 +67,10 @@ function OrderListView({ orders, updateOrderStatus }: { orders: any[]; updateOrd
               <div className="flex items-center justify-between">
                 <span className="font-bold">${Number(order.total).toFixed(2)}</span>
                 {next && (
-                  <Button size="sm" onClick={() => updateOrderStatus(order.id, next)}>
+                  <Button size="sm" onClick={async () => {
+                    await updateOrderStatus(order.id, next);
+                    if (next === 'completed') await onComplete(order);
+                  }}>
                     Move to {next}
                   </Button>
                 )}
@@ -96,7 +99,21 @@ const OrdersPage = () => {
   const { data: menuItems, loading: menuLoading } = useMenuItems();
   const { data: categories, loading: catsLoading } = useCategories();
   const { orders, loading: ordersLoading, createOrder, updateOrderStatus } = useDbOrders();
+  const { createInvoice } = useInvoices();
 
+  const handleCompleteOrder = useCallback(async (order: any) => {
+    await createInvoice({
+      order_id: order.id,
+      customer_name: order.customer_name || null,
+      subtotal: Number(order.subtotal),
+      tax: Number(order.tax),
+      discount: Number(order.discount),
+      total: Number(order.total),
+      payment_method: 'cash',
+      paid: true,
+    });
+    toast.success('Invoice generated!');
+  }, [createInvoice]);
   const [searchParams] = useSearchParams();
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [view, setView] = useState<'new' | 'list'>('new');
@@ -190,7 +207,7 @@ const OrdersPage = () => {
       </div>
 
       {view === 'list' ? (
-        <OrderListView orders={orders} updateOrderStatus={updateOrderStatus} />
+        <OrderListView orders={orders} updateOrderStatus={updateOrderStatus} onComplete={handleCompleteOrder} />
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div className="lg:col-span-2 space-y-4">
