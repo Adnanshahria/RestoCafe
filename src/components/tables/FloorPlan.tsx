@@ -164,15 +164,22 @@ export function FloorPlan() {
             </div>
           ))}
         </div>
-        <Button
-          variant={editMode ? 'default' : 'outline'}
-          size="sm"
-          onClick={() => setEditMode(!editMode)}
-          className="gap-1.5"
-        >
-          {editMode ? <Unlock className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5" />}
-          {editMode ? 'Lock Layout' : 'Edit Layout'}
-        </Button>
+        <div className="flex gap-2">
+          {editMode && (
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setAddDialog(true)}>
+              <Plus className="h-3.5 w-3.5" /> Add Table
+            </Button>
+          )}
+          <Button
+            variant={editMode ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setEditMode(!editMode)}
+            className="gap-1.5"
+          >
+            {editMode ? <Unlock className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5" />}
+            {editMode ? 'Lock Layout' : 'Edit Layout'}
+          </Button>
+        </div>
       </div>
 
       {/* Floor Plan */}
