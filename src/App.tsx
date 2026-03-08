@@ -10,6 +10,7 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import OrdersPage from "./pages/Orders";
+import TablesPage from "./pages/Tables";
 import MenuPage from "./pages/Menu";
 import InvoicesPage from "./pages/Invoices";
 import FinancePage from "./pages/Finance";
