@@ -2,6 +2,8 @@ import {
   LayoutDashboard,
   ShoppingCart,
   UtensilsCrossed,
+  Grid3X3,
+  FileText,
   FileText,
   DollarSign,
   Users,
