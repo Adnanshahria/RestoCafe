@@ -1,12 +1,5 @@
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-
-const data = [
-  { name: 'Grilled Salmon', orders: 48 },
-  { name: 'Beef Steak', orders: 42 },
-  { name: 'Chicken Parm.', orders: 38 },
-  { name: 'Caesar Salad', orders: 35 },
-  { name: 'Espresso', orders: 62 },
-];
+import { useOrders } from '@/hooks/useSupabaseData';
 
 const colors = [
   'hsl(134, 20%, 55%)',
@@ -17,6 +10,23 @@ const colors = [
 ];
 
 export function TopItemsChart() {
+  const { orders } = useOrders();
+
+  // Aggregate item popularity from real orders
+  const itemCounts: Record<string, number> = {};
+  orders.forEach(o => o.items.forEach(i => {
+    itemCounts[i.menu_item_name] = (itemCounts[i.menu_item_name] || 0) + i.quantity;
+  }));
+
+  const data = Object.entries(itemCounts)
+    .map(([name, orders]) => ({ name, orders }))
+    .sort((a, b) => b.orders - a.orders)
+    .slice(0, 5);
+
+  if (data.length === 0) {
+    return <p className="text-sm text-muted-foreground text-center py-10">No order data yet</p>;
+  }
+
   return (
     <ResponsiveContainer width="100%" height={280}>
       <BarChart data={data} layout="vertical" margin={{ left: 10 }}>
