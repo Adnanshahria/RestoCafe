@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { FileText, Printer, Download, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -8,10 +8,156 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Separator } from '@/components/ui/separator';
 import { mockInvoices, mockOrders } from '@/data/mock-data';
 import { Invoice, Order } from '@/types';
+import jsPDF from 'jspdf';
+
+const RESTAURANT = {
+  name: 'RestoCafe',
+  tagline: 'Fine Dining & Coffee',
+  address: '123 Restaurant Ave, Suite 100',
+  city: 'San Francisco, CA 94102',
+  phone: '(555) 123-4567',
+  email: 'hello@restocafe.com',
+  website: 'www.restocafe.com',
+  taxId: 'TAX-2024-00891',
+  logoUrl: '/logo-restocafe.png',
+};
+
+function loadImage(url: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+
+async function generateReceiptPDF(invoice: Invoice) {
+  const doc = new jsPDF({ unit: 'mm', format: [80, 200] }); // receipt-width
+  const w = 80;
+  let y = 6;
+  const lm = 5; // left margin
+  const rm = w - 5; // right edge
+
+  // --- Logo ---
+  try {
+    const img = await loadImage(RESTAURANT.logoUrl);
+    const logoW = 22;
+    const logoH = (img.height / img.width) * logoW;
+    doc.addImage(img, 'PNG', (w - logoW) / 2, y, logoW, logoH);
+    y += logoH + 2;
+  } catch {
+    y += 2;
+  }
+
+  // --- Header ---
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12);
+  doc.text(RESTAURANT.name, w / 2, y, { align: 'center' });
+  y += 4;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(6.5);
+  doc.setTextColor(100);
+  doc.text(RESTAURANT.tagline, w / 2, y, { align: 'center' });
+  y += 3;
+  doc.text(RESTAURANT.address, w / 2, y, { align: 'center' });
+  y += 3;
+  doc.text(`${RESTAURANT.city} · ${RESTAURANT.phone}`, w / 2, y, { align: 'center' });
+  y += 4;
+
+  // --- Dashed line ---
+  doc.setDrawColor(180);
+  doc.setLineDashPattern([1, 1], 0);
+  doc.line(lm, y, rm, y);
+  y += 4;
+
+  // --- Invoice info ---
+  doc.setTextColor(60);
+  doc.setFontSize(7);
+  doc.text(`Invoice #${invoice.id.slice(-4)}`, lm, y);
+  doc.text(new Date(invoice.createdAt).toLocaleString(), rm, y, { align: 'right' });
+  y += 3.5;
+  doc.text(`Customer: ${invoice.customerName || 'Walk-in'}`, lm, y);
+  doc.text(`Payment: ${invoice.paymentMethod.toUpperCase()}`, rm, y, { align: 'right' });
+  y += 4;
+
+  doc.line(lm, y, rm, y);
+  y += 3;
+
+  // --- Column headers ---
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(6.5);
+  doc.setTextColor(80);
+  doc.text('ITEM', lm, y);
+  doc.text('QTY', 50, y, { align: 'center' });
+  doc.text('AMOUNT', rm, y, { align: 'right' });
+  y += 3;
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(40);
+
+  // --- Items ---
+  invoice.items.forEach(item => {
+    const name = item.menuItemName.length > 22
+      ? item.menuItemName.slice(0, 21) + '…'
+      : item.menuItemName;
+    doc.text(name, lm, y);
+    doc.text(`${item.quantity}`, 50, y, { align: 'center' });
+    doc.text(`$${(item.quantity * item.unitPrice).toFixed(2)}`, rm, y, { align: 'right' });
+    y += 3.5;
+  });
+
+  y += 1;
+  doc.line(lm, y, rm, y);
+  y += 4;
+
+  // --- Totals ---
+  doc.setFontSize(7);
+  doc.setTextColor(80);
+  doc.text('Subtotal', lm, y);
+  doc.text(`$${invoice.subtotal.toFixed(2)}`, rm, y, { align: 'right' });
+  y += 3.5;
+  doc.text('Tax', lm, y);
+  doc.text(`$${invoice.tax.toFixed(2)}`, rm, y, { align: 'right' });
+  y += 3.5;
+  if (invoice.discount > 0) {
+    doc.text('Discount', lm, y);
+    doc.text(`-$${invoice.discount.toFixed(2)}`, rm, y, { align: 'right' });
+    y += 3.5;
+  }
+  doc.line(lm, y, rm, y);
+  y += 4;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor(20);
+  doc.text('TOTAL', lm, y);
+  doc.text(`$${invoice.total.toFixed(2)}`, rm, y, { align: 'right' });
+  y += 6;
+
+  // --- Footer ---
+  doc.setLineDashPattern([1, 1], 0);
+  doc.setDrawColor(180);
+  doc.line(lm, y, rm, y);
+  y += 4;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(6);
+  doc.setTextColor(120);
+  doc.text('Thank you for dining with us!', w / 2, y, { align: 'center' });
+  y += 3;
+  doc.text(`${RESTAURANT.website} · ${RESTAURANT.email}`, w / 2, y, { align: 'center' });
+  y += 3;
+  doc.text(`Tax ID: ${RESTAURANT.taxId}`, w / 2, y, { align: 'center' });
+  y += 3;
+  doc.text('Powered by RestoCafe POS', w / 2, y, { align: 'center' });
+
+  // Trim page height
+  const pageHeight = y + 6;
+  (doc as any).internal.pageSize.height = pageHeight;
+
+  doc.save(`receipt-${invoice.id.slice(-4)}.pdf`);
+}
 
 const InvoicesPage = () => {
   const [invoices] = useState<Invoice[]>(() => {
-    // Generate invoices from completed orders
     const completedOrders = mockOrders.filter(o => o.status === 'completed');
     const generated: Invoice[] = completedOrders.map(o => ({
       id: `inv-${o.id}`,
@@ -31,6 +177,9 @@ const InvoicesPage = () => {
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
 
   const handlePrint = () => window.print();
+  const handleExportPDF = useCallback(() => {
+    if (selectedInvoice) generateReceiptPDF(selectedInvoice);
+  }, [selectedInvoice]);
 
   return (
     <div className="space-y-4">
@@ -73,9 +222,11 @@ const InvoicesPage = () => {
           </DialogHeader>
           {selectedInvoice && (
             <div className="space-y-4" id="receipt">
-              <div className="text-center">
-                <h3 className="font-bold text-lg">RestoCafe</h3>
-                <p className="text-xs text-muted-foreground">123 Restaurant Ave · (555) 123-4567</p>
+              <div className="text-center space-y-1">
+                <img src={RESTAURANT.logoUrl} alt="RestoCafe" className="h-12 mx-auto" />
+                <h3 className="font-bold text-lg">{RESTAURANT.name}</h3>
+                <p className="text-[11px] text-muted-foreground">{RESTAURANT.tagline}</p>
+                <p className="text-xs text-muted-foreground">{RESTAURANT.address} · {RESTAURANT.phone}</p>
               </div>
               <Separator />
               <div className="space-y-1 text-sm">
@@ -94,10 +245,19 @@ const InvoicesPage = () => {
                 <div className="flex justify-between font-bold text-base"><span>Total</span><span>${selectedInvoice.total.toFixed(2)}</span></div>
               </div>
               <Separator />
-              <p className="text-xs text-center text-muted-foreground">Payment: {selectedInvoice.paymentMethod} · {new Date(selectedInvoice.createdAt).toLocaleString()}</p>
-              <Button variant="outline" className="w-full no-print" onClick={handlePrint}>
-                <Printer className="h-4 w-4 mr-1" /> Print Receipt
-              </Button>
+              <div className="text-center space-y-0.5">
+                <p className="text-xs text-muted-foreground">Payment: {selectedInvoice.paymentMethod} · {new Date(selectedInvoice.createdAt).toLocaleString()}</p>
+                <p className="text-[10px] text-muted-foreground italic">Thank you for dining with us!</p>
+                <p className="text-[10px] text-muted-foreground">{RESTAURANT.website} · Tax ID: {RESTAURANT.taxId}</p>
+              </div>
+              <div className="flex gap-2 no-print">
+                <Button variant="outline" className="flex-1" onClick={handlePrint}>
+                  <Printer className="h-4 w-4 mr-1" /> Print
+                </Button>
+                <Button className="flex-1" onClick={handleExportPDF}>
+                  <Download className="h-4 w-4 mr-1" /> Export PDF
+                </Button>
+              </div>
             </div>
           )}
         </DialogContent>
