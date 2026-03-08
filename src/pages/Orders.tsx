@@ -97,10 +97,12 @@ const OrdersPage = () => {
   const { data: categories, loading: catsLoading } = useCategories();
   const { orders, loading: ordersLoading, createOrder, updateOrderStatus } = useDbOrders();
 
+  const [searchParams] = useSearchParams();
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [view, setView] = useState<'new' | 'list'>('new');
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [currentTable, setCurrentTable] = useState<string>('');
+  const [currentTable, setCurrentTable] = useState<string>(searchParams.get('table') || '');
+  const [currentCustomerName, setCurrentCustomerName] = useState(searchParams.get('customer') || '');
   const [currentCustomerName, setCurrentCustomerName] = useState('');
 
   const filteredItems = activeCategory === 'all'
