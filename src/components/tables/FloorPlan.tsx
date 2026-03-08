@@ -90,6 +90,26 @@ export function FloorPlan() {
     setTables(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
   };
 
+  const removeTable = (id: string) => {
+    setTables(prev => prev.filter(t => t.id !== id));
+  };
+
+  const addNewTable = () => {
+    const maxNumber = tables.reduce((max, t) => Math.max(max, t.number), 0);
+    const newT: RestaurantTable = {
+      id: `t-${Date.now()}`,
+      number: maxNumber + 1,
+      seats: parseInt(newTable.seats) || 4,
+      x: 40,
+      y: 40,
+      status: 'available',
+      shape: newTable.shape,
+    };
+    setTables(prev => [...prev, newT]);
+    setAddDialog(false);
+    setNewTable({ seats: '4', shape: 'square' });
+  };
+
   const getPercentPosition = useCallback((clientX: number, clientY: number) => {
     if (!floorRef.current) return { x: 0, y: 0 };
     const rect = floorRef.current.getBoundingClientRect();
