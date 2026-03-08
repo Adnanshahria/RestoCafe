@@ -4,7 +4,6 @@ import {
   UtensilsCrossed,
   Grid3X3,
   FileText,
-  FileText,
   DollarSign,
   Users,
   BarChart3,
