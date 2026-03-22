@@ -23,14 +23,14 @@ const Login = () => {
       if (isSignUp) {
         const { error } = await signUp(email, password, displayName || email);
         if (error) {
-          toast.error(error.message);
+          toast.error(typeof error === 'string' ? error : 'Registration failed');
         } else {
-          toast.success('Account created! Check your email to confirm, or sign in if auto-confirm is enabled.');
+          toast.success('Account created successfully!');
         }
       } else {
         const { error } = await signIn(email, password);
         if (error) {
-          toast.error(error.message);
+          toast.error(typeof error === 'string' ? error : 'Login failed');
         }
       }
     } finally {

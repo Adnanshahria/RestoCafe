@@ -3,6 +3,7 @@ import { AppSidebar } from '@/components/layout/AppSidebar';
 import { useAuth } from '@/contexts/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useLocation } from 'react-router-dom';
+import { ChatWidget } from '@/components/Chatbot/ChatWidget';
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -43,6 +44,7 @@ export function AppLayout({ children }: AppLayoutProps) {
             </AnimatePresence>
           </main>
         </div>
+        <ChatWidget />
       </div>
     </SidebarProvider>
   );

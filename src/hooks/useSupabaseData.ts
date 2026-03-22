@@ -1,9 +1,9 @@
-import { useEffect, useState, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import { api } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 
-// Generic hook for fetching a table
-export function useTable<T>(table: string, orderBy?: string) {
+// Generic hook for fetching from an API endpoint
+export function useTable<T>(endpoint: string) {
   const [data, setData] = useState<T[]>([]);
   const [loading, setLoading] = useState(true);
   const { isAuthenticated } = useAuth();
@@ -11,12 +11,14 @@ export function useTable<T>(table: string, orderBy?: string) {
   const refetch = useCallback(async () => {
     if (!isAuthenticated) return;
     setLoading(true);
-    let query = (supabase.from as any)(table).select('*');
-    if (orderBy) query = query.order(orderBy, { ascending: false });
-    const { data: rows, error } = await query;
-    if (!error && rows) setData(rows as T[]);
+    try {
+      const rows = await api.get(`/api/${endpoint}`);
+      setData(rows as T[]);
+    } catch (err) {
+      console.error(`Failed to fetch ${endpoint}:`, err);
+    }
     setLoading(false);
-  }, [table, orderBy, isAuthenticated]);
+  }, [endpoint, isAuthenticated]);
 
   useEffect(() => {
     refetch();
@@ -27,7 +29,7 @@ export function useTable<T>(table: string, orderBy?: string) {
 
 // Categories
 export function useCategories() {
-  return useTable<{ id: string; name: string; icon: string | null }>('categories', 'name');
+  return useTable<{ id: string; name: string; icon: string | null }>('categories');
 }
 
 // Menu items
@@ -43,24 +45,36 @@ export interface DbMenuItem {
 }
 
 export function useMenuItems() {
-  const result = useTable<DbMenuItem>('menu_items', 'created_at');
+  const result = useTable<DbMenuItem>('menu-items');
 
   const addItem = useCallback(async (item: Omit<DbMenuItem, 'id' | 'created_at'>) => {
-    const { data, error } = await supabase.from('menu_items').insert(item).select().single();
-    if (!error && data) result.refetch();
-    return { data, error };
+    try {
+      const data = await api.post('/api/menu-items', item);
+      result.refetch();
+      return { data, error: null };
+    } catch (error: any) {
+      return { data: null, error };
+    }
   }, [result.refetch]);
 
   const updateItem = useCallback(async (id: string, updates: Partial<DbMenuItem>) => {
-    const { error } = await supabase.from('menu_items').update(updates).eq('id', id);
-    if (!error) result.refetch();
-    return { error };
+    try {
+      await api.put(`/api/menu-items/${id}`, updates);
+      result.refetch();
+      return { error: null };
+    } catch (error: any) {
+      return { error };
+    }
   }, [result.refetch]);
 
   const deleteItem = useCallback(async (id: string) => {
-    const { error } = await supabase.from('menu_items').delete().eq('id', id);
-    if (!error) result.refetch();
-    return { error };
+    try {
+      await api.delete(`/api/menu-items/${id}`);
+      result.refetch();
+      return { error: null };
+    } catch (error: any) {
+      return { error };
+    }
   }, [result.refetch]);
 
   return { ...result, addItem, updateItem, deleteItem };
@@ -82,24 +96,36 @@ export interface DbTable {
 }
 
 export function useRestaurantTables() {
-  const result = useTable<DbTable>('restaurant_tables', 'number');
+  const result = useTable<DbTable>('tables');
 
   const addTable = useCallback(async (table: Omit<DbTable, 'id'>) => {
-    const { data, error } = await supabase.from('restaurant_tables').insert(table).select().single();
-    if (!error) result.refetch();
-    return { data, error };
+    try {
+      const data = await api.post('/api/tables', table);
+      result.refetch();
+      return { data, error: null };
+    } catch (error: any) {
+      return { data: null, error };
+    }
   }, [result.refetch]);
 
   const updateTable = useCallback(async (id: string, updates: Partial<DbTable>) => {
-    const { error } = await supabase.from('restaurant_tables').update(updates).eq('id', id);
-    if (!error) result.refetch();
-    return { error };
+    try {
+      await api.put(`/api/tables/${id}`, updates);
+      result.refetch();
+      return { error: null };
+    } catch (error: any) {
+      return { error };
+    }
   }, [result.refetch]);
 
   const deleteTable = useCallback(async (id: string) => {
-    const { error } = await supabase.from('restaurant_tables').delete().eq('id', id);
-    if (!error) result.refetch();
-    return { error };
+    try {
+      await api.delete(`/api/tables/${id}`);
+      result.refetch();
+      return { error: null };
+    } catch (error: any) {
+      return { error };
+    }
   }, [result.refetch]);
 
   return { ...result, addTable, updateTable, deleteTable };
@@ -135,44 +161,35 @@ export function useOrders() {
   const [orders, setOrders] = useState<(DbOrder & { items: DbOrderItem[] })[]>([]);
   const [loading, setLoading] = useState(true);
   const { isAuthenticated } = useAuth();
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const refetch = useCallback(async () => {
     if (!isAuthenticated) return;
-    setLoading(true);
-    const { data: orderRows } = await supabase
-      .from('orders')
-      .select('*')
-      .order('created_at', { ascending: false });
-    const { data: itemRows } = await supabase.from('order_items').select('*');
-
-    if (orderRows) {
-      const mapped = orderRows.map(o => ({
-        ...o,
-        items: (itemRows || []).filter(i => i.order_id === o.id),
-      }));
-      setOrders(mapped as any);
+    try {
+      const data = await api.get('/api/orders');
+      setOrders(data as any);
+    } catch (err) {
+      console.error('Failed to fetch orders:', err);
     }
     setLoading(false);
   }, [isAuthenticated]);
 
-  useEffect(() => { refetch(); }, [refetch]);
+  useEffect(() => {
+    refetch();
+  }, [refetch]);
 
-  // Realtime subscription for orders and order_items
+  // Polling for real-time updates (every 5 seconds)
   useEffect(() => {
     if (!isAuthenticated) return;
 
-    const channel = supabase
-      .channel('orders-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
-        refetch();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'order_items' }, () => {
-        refetch();
-      })
-      .subscribe();
+    pollingRef.current = setInterval(() => {
+      refetch();
+    }, 5000);
 
     return () => {
-      supabase.removeChannel(channel);
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+      }
     };
   }, [isAuthenticated, refetch]);
 
@@ -180,15 +197,20 @@ export function useOrders() {
     order: Omit<DbOrder, 'id' | 'created_at' | 'updated_at'>,
     items: Omit<DbOrderItem, 'id' | 'order_id'>[]
   ) => {
-    const { data, error } = await supabase.from('orders').insert(order).select().single();
-    if (error || !data) return { error };
-    const orderItems = items.map(i => ({ ...i, order_id: data.id }));
-    await supabase.from('order_items').insert(orderItems);
-    return { data, error: null };
+    try {
+      const data = await api.post('/api/orders', { ...order, items });
+      return { data, error: null };
+    } catch (error: any) {
+      return { data: null, error };
+    }
   }, []);
 
   const updateOrderStatus = useCallback(async (id: string, status: string) => {
-    await supabase.from('orders').update({ status }).eq('id', id);
+    try {
+      await api.patch(`/api/orders/${id}/status`, { status });
+    } catch (err) {
+      console.error('Failed to update order status:', err);
+    }
   }, []);
 
   return { orders, loading, refetch, createOrder, updateOrderStatus };
@@ -208,12 +230,16 @@ export interface DbCustomer {
 }
 
 export function useCustomers() {
-  const result = useTable<DbCustomer>('customers', 'created_at');
+  const result = useTable<DbCustomer>('customers');
 
   const addCustomer = useCallback(async (c: Partial<DbCustomer>) => {
-    const { error } = await supabase.from('customers').insert([c] as any);
-    if (!error) result.refetch();
-    return { error };
+    try {
+      await api.post('/api/customers', c);
+      result.refetch();
+      return { error: null };
+    } catch (error: any) {
+      return { error };
+    }
   }, [result.refetch]);
 
   return { ...result, addCustomer };
@@ -231,12 +257,16 @@ export interface DbExpense {
 }
 
 export function useExpenses() {
-  const result = useTable<DbExpense>('expenses', 'created_at');
+  const result = useTable<DbExpense>('expenses');
 
   const addExpense = useCallback(async (e: Omit<DbExpense, 'id' | 'created_at'>) => {
-    const { error } = await supabase.from('expenses').insert(e);
-    if (!error) result.refetch();
-    return { error };
+    try {
+      await api.post('/api/expenses', e);
+      result.refetch();
+      return { error: null };
+    } catch (error: any) {
+      return { error };
+    }
   }, [result.refetch]);
 
   return { ...result, addExpense };
@@ -257,12 +287,16 @@ export interface DbInvoice {
 }
 
 export function useInvoices() {
-  const result = useTable<DbInvoice>('invoices', 'created_at');
+  const result = useTable<DbInvoice>('invoices');
 
   const createInvoice = useCallback(async (inv: Omit<DbInvoice, 'id' | 'created_at'>) => {
-    const { error } = await supabase.from('invoices').insert(inv);
-    if (!error) result.refetch();
-    return { error };
+    try {
+      await api.post('/api/invoices', inv);
+      result.refetch();
+      return { error: null };
+    } catch (error: any) {
+      return { error };
+    }
   }, [result.refetch]);
 
   return { ...result, createInvoice };

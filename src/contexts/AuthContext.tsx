@@ -1,10 +1,16 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-import type { User as SupaUser, Session } from '@supabase/supabase-js';
+import { api, ApiError } from '@/lib/api';
+
+interface UserInfo {
+  id: string;
+  email: string;
+  role: 'admin' | 'cashier';
+  displayName: string;
+  avatarUrl: string | null;
+}
 
 interface AuthContextType {
-  user: SupaUser | null;
-  session: Session | null;
+  user: UserInfo | null;
   profile: { display_name: string; avatar_url: string | null } | null;
   role: 'admin' | 'cashier';
   isAuthenticated: boolean;
@@ -19,92 +25,91 @@ const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 export const useAuth = () => useContext(AuthContext);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<SupaUser | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
-  const [profile, setProfile] = useState<{ display_name: string; avatar_url: string | null } | null>(null);
-  const [role, setRole] = useState<'admin' | 'cashier'>('cashier');
+  const [user, setUser] = useState<UserInfo | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchProfile = useCallback(async (userId: string) => {
-    const { data } = await supabase
-      .from('profiles')
-      .select('display_name, avatar_url')
-      .eq('user_id', userId)
-      .single();
-    if (data) setProfile(data);
-  }, []);
-
-  const fetchRole = useCallback(async (userId: string) => {
-    const { data } = await supabase
-      .from('user_roles')
-      .select('role')
-      .eq('user_id', userId);
-    if (data && data.length > 0) {
-      const hasAdmin = data.some(r => r.role === 'admin');
-      setRole(hasAdmin ? 'admin' : 'cashier');
+  const fetchMe = useCallback(async () => {
+    try {
+      const data = await api.get('/api/auth/me');
+      setUser({
+        id: data.id,
+        email: data.email,
+        role: data.role,
+        displayName: data.displayName,
+        avatarUrl: data.avatarUrl,
+      });
+    } catch {
+      api.clearTokens();
+      setUser(null);
     }
   }, []);
 
+  // On mount, check for existing session
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        if (session?.user) {
-          // Use setTimeout to avoid Supabase deadlock during auth callback
-          setTimeout(() => {
-            fetchProfile(session.user.id);
-            fetchRole(session.user.id);
-          }, 0);
-        } else {
-          setProfile(null);
-          setRole('cashier');
-        }
-        setLoading(false);
-      }
-    );
-
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        fetchProfile(session.user.id);
-        fetchRole(session.user.id);
-      }
+    const token = localStorage.getItem('access_token');
+    if (token) {
+      fetchMe().finally(() => setLoading(false));
+    } else {
       setLoading(false);
-    });
-
-    return () => subscription.unsubscribe();
-  }, [fetchProfile, fetchRole]);
+    }
+  }, [fetchMe]);
 
   const signUp = useCallback(async (email: string, password: string, displayName: string) => {
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { display_name: displayName },
-        emailRedirectTo: window.location.origin,
-      },
-    });
-    return { error };
+    try {
+      const data = await api.post('/api/auth/register', { email, password, displayName });
+      localStorage.setItem('access_token', data.token);
+      localStorage.setItem('refresh_token', data.refreshToken);
+      setUser({
+        id: data.user.id,
+        email: data.user.email,
+        role: data.user.role,
+        displayName: data.user.displayName,
+        avatarUrl: null,
+      });
+      return { error: null };
+    } catch (err: any) {
+      return { error: err instanceof ApiError ? err.message : 'Registration failed' };
+    }
   }, []);
 
   const signIn = useCallback(async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    return { error };
+    try {
+      const data = await api.post('/api/auth/login', { email, password });
+      localStorage.setItem('access_token', data.token);
+      localStorage.setItem('refresh_token', data.refreshToken);
+      setUser({
+        id: data.user.id,
+        email: data.user.email,
+        role: data.user.role,
+        displayName: data.user.displayName,
+        avatarUrl: data.user.avatarUrl || null,
+      });
+      return { error: null };
+    } catch (err: any) {
+      return { error: err instanceof ApiError ? err.message : 'Login failed' };
+    }
   }, []);
 
   const signOut = useCallback(async () => {
-    await supabase.auth.signOut();
+    const refreshToken = localStorage.getItem('refresh_token');
+    try {
+      await api.post('/api/auth/logout', { refreshToken });
+    } catch {
+      // Ignore logout errors
+    }
+    api.clearTokens();
+    setUser(null);
   }, []);
+
+  const profile = user ? { display_name: user.displayName, avatar_url: user.avatarUrl } : null;
+  const role = user?.role || 'cashier';
 
   return (
     <AuthContext.Provider value={{
       user,
-      session,
       profile,
       role,
-      isAuthenticated: !!session,
+      isAuthenticated: !!user,
       isAdmin: role === 'admin',
       loading,
       signUp,
