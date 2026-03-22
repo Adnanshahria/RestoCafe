@@ -49,7 +49,7 @@ app.get('/api/health', (c) => c.json({ status: 'ok', timestamp: new Date().toISO
 // Global error handler
 app.onError((err, c) => {
   console.error('Server error:', err.message);
-  return c.json({ error: 'Internal server error' }, 500);
+  return c.json({ error: err.message || 'Internal server error' }, 500);
 });
 
 export default app;
