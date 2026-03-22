@@ -1,25 +1,24 @@
 import { handle } from 'hono/cloudflare-pages';
 import app from '../../server/app';
 
-// Cloudflare Pages execution context
 export const onRequest = async (context: any) => {
-  // Map Cloudflare environment variables to process.env
-  // Wait, process might not exist in the Cloudflare edge runtime natively
-  if (typeof process === 'undefined') {
+  // 1. Ensure process.env polyfill exists
+  if (typeof (globalThis as any).process === 'undefined') {
     (globalThis as any).process = { env: {} };
   } else if (!process.env) {
-    process.env = {};
+    (process as any).env = {};
   }
 
-  // Copy context.env to process.env so our existing code works unmodified
+  // 2. Map Cloudflare secrets to process.env
   if (context.env) {
     for (const key in context.env) {
+      // Avoid overwriting if already set, but prioritize context.env
       process.env[key] = context.env[key];
     }
   }
 
-  // Pass to Hono handler
-  // Hono's handle() returns a standard Fetch API Response
-  // Cloudflare Pages functions can just call the handle wrapper
+  // 3. (Optional) Simple debug log to confirm env keys are present
+  // console.log('Env keys:', Object.keys(process.env).join(', '));
+
   return handle(app)(context);
 };
