@@ -1,5 +1,4 @@
 import { createClient, Client } from '@libsql/client';
-import 'dotenv/config';
 
 let client: Client | null = null;
 
