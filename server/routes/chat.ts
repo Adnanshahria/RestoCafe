@@ -31,19 +31,25 @@ const chatSchema = z.object({
   })).optional().default([]),
 });
 
-const SYSTEM_PROMPT = `You are a helpful restaurant management assistant. You help with:
-- Menu management and food recommendations
-- Order tracking and status updates
-- Table management and reservations
-- Customer inquiries and loyalty programs
-- Financial reports and expense tracking
-- General restaurant operations
+import { TOOL_DEFINITIONS, handleToolCall } from '../utils/chatbot-tools';
 
-Be concise, friendly, and professional. If asked about specific data, let the user know they can check the relevant section in the dashboard.`;
+const SYSTEM_PROMPT = `You are a helpful restaurant management assistant. You have access to real-time data and can perform actions using tools.
+- Use 'get_menu' to see what's on the menu.
+- Use 'get_orders' to check order history or status.
+- Use 'get_tables' to see table status.
+- Use 'create_order' to help users place new orders.
+- Use 'update_order_status' to manage the workflow.
+
+Be concise, friendly, and proactive. If a user asks to "do something" (like create an order), use the tools directly instead of just explaining it.`;
+
+type ChatMessage = 
+  | { role: 'system' | 'user' | 'assistant'; content: string }
+  | { role: 'assistant'; content?: string | null; tool_calls?: any[] }
+  | { role: 'tool'; tool_call_id: string; name: string; content: string };
 
 // POST /api/chat
 chat.post('/', async (c) => {
-  const user = c.get('user') as JWTPayload;
+  const user = c.get('user' as any) as JWTPayload;
 
   if (!checkChatRateLimit(user.userId)) {
     return c.json({ error: 'Too many chat requests. Please wait a moment.' }, 429);
@@ -56,20 +62,20 @@ chat.post('/', async (c) => {
   }
 
   const { message, history } = parsed.data;
-
   const groqApiKey = process.env.GROQ_API_KEY;
   if (!groqApiKey) {
     return c.json({ error: 'Chat service not configured' }, 503);
   }
 
   try {
-    const messages = [
+    let messages: ChatMessage[] = [
       { role: 'system', content: SYSTEM_PROMPT },
-      ...history.slice(-10), // Keep last 10 messages for context
+      ...history.slice(-10).map(h => ({ role: h.role as 'user' | 'assistant', content: h.content })),
       { role: 'user', content: message },
     ];
 
-    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    // Initial Request to Groq
+    let response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${groqApiKey}`,
@@ -78,8 +84,9 @@ chat.post('/', async (c) => {
       body: JSON.stringify({
         model: 'llama-3.3-70b-versatile',
         messages,
+        tools: TOOL_DEFINITIONS,
+        tool_choice: 'auto',
         max_tokens: 1024,
-        temperature: 0.7,
       }),
     });
 
@@ -89,11 +96,51 @@ chat.post('/', async (c) => {
       return c.json({ error: 'Chat service temporarily unavailable' }, 502);
     }
 
-    const data = await response.json() as any;
-    const assistantMessage = data.choices?.[0]?.message?.content || 'Sorry, I could not generate a response.';
+    let data = await response.json() as any;
+    let messageObj = data.choices[0].message;
+
+    // Process Tool Calls (loop up to 3 times to handle chained calls if needed)
+    let iterations = 0;
+    while (messageObj.tool_calls && iterations < 3) {
+      iterations++;
+      messages.push(messageObj);
+
+      for (const toolCall of messageObj.tool_calls) {
+        const result = await handleToolCall(
+          toolCall.function.name,
+          JSON.parse(toolCall.function.arguments),
+          user.userId
+        );
+
+        messages.push({
+          role: 'tool',
+          tool_call_id: toolCall.id,
+          name: toolCall.function.name,
+          content: result,
+        });
+      }
+
+      // Get follow-up response from Groq
+      response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${groqApiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'llama-3.3-70b-versatile',
+          messages,
+          tools: TOOL_DEFINITIONS,
+        }),
+      });
+
+      if (!response.ok) break;
+      data = await response.json();
+      messageObj = data.choices[0].message;
+    }
 
     return c.json({
-      message: assistantMessage,
+      message: messageObj.content || 'Action completed successfully.',
       role: 'assistant',
     });
   } catch (error) {

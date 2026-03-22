@@ -32,14 +32,6 @@ function getR2Client() {
 
 // POST /api/upload
 upload.post('/', requireRole('admin'), async (c) => {
-  const r2Client = getR2Client();
-  const bucketName = process.env.R2_BUCKET_NAME;
-  const publicUrl = process.env.R2_PUBLIC_URL;
-
-  if (!r2Client || !bucketName) {
-    return c.json({ error: 'Image upload service not configured. Please set R2 credentials.' }, 503);
-  }
-
   const formData = await c.req.formData();
   const file = formData.get('file') as File | null;
 
@@ -57,8 +49,31 @@ upload.post('/', requireRole('admin'), async (c) => {
 
   const ext = file.type.split('/')[1] === 'jpeg' ? 'jpg' : file.type.split('/')[1];
   const filename = `menu/${crypto.randomUUID()}.${ext}`;
-
   const buffer = await file.arrayBuffer();
+
+  // 1. Try Direct Cloudflare R2 Binding (High Performance)
+  const bucket = (c.env as any)?.BUCKET;
+  if (bucket && typeof bucket.put === 'function') {
+    try {
+      await bucket.put(filename, buffer, {
+        httpMetadata: { contentType: file.type }
+      });
+      // In Cloudflare Pages with R2 binding, usually you serve via a custom domain or a route
+      const publicUrl = process.env.R2_PUBLIC_URL || `https://pub-your-id.r2.dev`; // Fallback placeholder
+      return c.json({ url: `${publicUrl}/${filename}` });
+    } catch (err) {
+      console.error('Direct R2 upload failed, falling back...', err);
+    }
+  }
+
+  // 2. Fallback to S3 Client (Local Dev or Manual Config)
+  const r2Client = getR2Client();
+  const bucketName = process.env.R2_BUCKET_NAME;
+  const publicUrl = process.env.R2_PUBLIC_URL;
+
+  if (!r2Client || !bucketName) {
+    return c.json({ error: 'Image upload service not fully configured. Please set R2 credentials or bind a BUCKET.' }, 503);
+  }
 
   try {
     await r2Client.send(new PutObjectCommand({
@@ -69,10 +84,9 @@ upload.post('/', requireRole('admin'), async (c) => {
     }));
 
     const url = publicUrl ? `${publicUrl}/${filename}` : `https://${bucketName}.r2.dev/${filename}`;
-
     return c.json({ url });
   } catch (error) {
-    console.error('R2 upload error:', error);
+    console.error('S3 Fallback upload error:', error);
     return c.json({ error: 'Failed to upload image' }, 500);
   }
 });
