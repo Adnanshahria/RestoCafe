@@ -1,7 +1,0 @@
-name = "resto-cafe-api"
-main = "server/worker.ts"
-compatibility_date = "2024-03-20"
-compatibility_flags = ["nodejs_compat"]
-
-[vars]
-FRONTEND_URL = "https://my-resturant.pages.dev"
